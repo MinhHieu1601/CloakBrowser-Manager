@@ -102,6 +102,18 @@ docker compose up --build
 - ~2 GB disk (image + binary)
 - ~512 MB RAM per running profile
 
+## Updating
+
+Pull the latest image and restart:
+
+```bash
+docker pull cloakhq/cloakbrowser-manager
+docker stop <container-id>
+docker run -p 8080:8080 -v cloakprofiles:/data cloakhq/cloakbrowser-manager
+```
+
+Your profiles and session data are stored in the `cloakprofiles` volume and persist across updates.
+
 ## Remote Access
 
 The container binds to localhost only. To access from a remote server:

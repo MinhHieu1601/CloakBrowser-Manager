@@ -116,4 +116,13 @@ export const api = {
     request<{ ok: boolean }>(`/api/profiles/${id}/stop`, { method: "POST" }),
 
   getStatus: () => request<SystemStatus>("/api/status"),
+
+  setClipboard: (id: string, text: string) =>
+    request<{ ok: boolean }>(`/api/profiles/${id}/clipboard`, {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+
+  getClipboard: (id: string) =>
+    request<{ text: string }>(`/api/profiles/${id}/clipboard`),
 };

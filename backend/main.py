@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from . import database as db
 from .browser_manager import BrowserManager
 from .models import (
+    ClipboardRequest,
     LaunchResponse,
     ProfileCreate,
     ProfileResponse,
@@ -41,6 +42,46 @@ browser_mgr = BrowserManager()
 
 # Frontend build directory (React production build)
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+
+
+# ---------------------------------------------------------------------------
+# RFB server message translator — KasmVNC BinaryClipboard → standard RFB
+# ---------------------------------------------------------------------------
+
+
+def _parse_kasmvnc_clipboard(data: bytes) -> str | None:
+    """Extract text/plain from KasmVNC BinaryClipboard (type 180).
+
+    Format: type(1) + action(1) + flags(4) + entries...
+    Each entry: mime_len(u8) + mime(N) + data_len(u32 BE) + data(M)
+    """
+    if len(data) < 7:
+        return None
+    offset = 6  # skip type(1) + action(1) + flags(4)
+    while offset < len(data):
+        if offset + 1 > len(data):
+            break
+        mime_len = data[offset]
+        offset += 1
+        if offset + mime_len > len(data):
+            break
+        mime_type = data[offset:offset + mime_len]
+        offset += mime_len
+        if offset + 4 > len(data):
+            break
+        data_len = struct.unpack_from(">I", data, offset)[0]
+        offset += 4
+        if mime_type == b"text/plain":
+            end = min(offset + data_len, len(data))
+            return data[offset:end].decode("utf-8", errors="replace")
+        offset += data_len
+    return None
+
+
+def _build_server_cut_text(text: str) -> bytes:
+    """Build standard RFB ServerCutText (type 3) message."""
+    text_bytes = text.encode("utf-8")
+    return struct.pack(">BxxxI", 3, len(text_bytes)) + text_bytes
 
 
 # ---------------------------------------------------------------------------
@@ -341,6 +382,89 @@ async def get_system_status():
     )
 
 
+# ── Clipboard Relay ──────────────────────────────────────────────────────────
+
+_CLIPBOARD_MAX_READ = 1_048_576  # 1MB cap on GET response
+
+
+@app.post("/api/profiles/{profile_id}/clipboard")
+async def set_clipboard(profile_id: str, body: ClipboardRequest):
+    """Push text into the VNC session's X clipboard via xclip."""
+    running = browser_mgr.running.get(profile_id)
+    if not running:
+        raise HTTPException(status_code=404, detail="Profile not running")
+
+    import os
+
+    env = {**os.environ, "DISPLAY": f":{running.display}"}
+    proc = await asyncio.create_subprocess_exec(
+        "xclip", "-selection", "clipboard",
+        stdin=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    # xclip reads stdin then stays alive to serve paste requests (never exits).
+    # Write the text, close stdin, and return — don't wait for exit.
+    proc.stdin.write(body.text.encode())  # type: ignore[union-attr]
+    await proc.stdin.drain()  # type: ignore[union-attr]
+    proc.stdin.close()  # type: ignore[union-attr]
+
+    return {"ok": True}
+
+
+@app.get("/api/profiles/{profile_id}/clipboard")
+async def get_clipboard(profile_id: str):
+    """Read the VNC session's clipboard.
+
+    Chrome doesn't write to X11 clipboard under KasmVNC, so xclip can't read it.
+    Instead, read via Playwright's CDP connection to Chrome (navigator.clipboard.readText).
+    Falls back to xclip for non-Chrome clipboard owners.
+    """
+    running = browser_mgr.running.get(profile_id)
+    if not running:
+        raise HTTPException(status_code=404, detail="Profile not running")
+
+    # Read Chrome's current text selection via Playwright.
+    # Chrome's native copy (via VNC Ctrl+C) doesn't write to X11 clipboard
+    # and doesn't fire DOM events, so we read the visible selection instead.
+    # The init script also captures copy events when they do fire.
+    try:
+        pages = running.context.pages
+        if pages:
+            page = pages[0]
+            # Check init script's captured clipboard text first
+            text = await page.evaluate("window.__clipboardText || ''")
+            if text:
+                return {"text": text[:_CLIPBOARD_MAX_READ]}
+            # Fall back to current selection (user may have selected but not copied)
+            text = await page.evaluate("(window.getSelection() || '').toString()")
+            if text:
+                return {"text": text[:_CLIPBOARD_MAX_READ]}
+    except Exception as exc:
+        logger.debug("Playwright clipboard read failed: %s", exc)
+
+    # Fallback: xclip for non-Chrome clipboard owners
+    import os
+
+    env = {**os.environ, "DISPLAY": f":{running.display}"}
+    proc = await asyncio.create_subprocess_exec(
+        "xclip", "-selection", "clipboard", "-o",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return {"text": ""}
+
+    if proc.returncode != 0:
+        return {"text": ""}
+
+    text = stdout[:_CLIPBOARD_MAX_READ].decode("utf-8", errors="replace")
+    return {"text": text}
+
+
 # ── VNC WebSocket Proxy ──────────────────────────────────────────────────────
 
 
@@ -441,10 +565,20 @@ async def vnc_proxy(websocket: WebSocket, profile_id: str):
                 try:
                     async for msg in vnc_ws:
                         count += 1
-                        if count <= 5:
-                            mtype = "bytes" if isinstance(msg, bytes) else "text"
-                            logger.debug("VNC proxy [v->c] #%d: %s len=%d", count, mtype, len(msg))
-                        if isinstance(msg, bytes):
+                        if isinstance(msg, bytes) and len(msg) > 0:
+                            msg_type = msg[0]
+                            if msg_type == 180:
+                                # KasmVNC BinaryClipboard → convert to standard
+                                # ServerCutText (type 3) so noVNC can handle it
+                                text = _parse_kasmvnc_clipboard(msg)
+                                if text:
+                                    logger.info("VNC proxy [v->c]: clipboard %d chars", len(text))
+                                    await websocket.send_bytes(_build_server_cut_text(text))
+                                else:
+                                    logger.info("VNC proxy [v->c]: dropped type 180 (no text/plain)")
+                                continue
+                            await websocket.send_bytes(msg)
+                        elif isinstance(msg, bytes):
                             await websocket.send_bytes(msg)
                         else:
                             await websocket.send_text(msg)
