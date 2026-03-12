@@ -74,6 +74,12 @@ class ApiError extends Error {
   }
 }
 
+// Global 401 callback — set by App to trigger login page on auth failure
+let _onUnauthorized: (() => void) | null = null;
+export function setOnUnauthorized(cb: (() => void) | null) {
+  _onUnauthorized = cb;
+}
+
 async function request<T>(
   path: string,
   options?: RequestInit,
@@ -83,6 +89,9 @@ async function request<T>(
     ...options,
   });
   if (!res.ok) {
+    if (res.status === 401 && _onUnauthorized) {
+      _onUnauthorized();
+    }
     const body = await res.json().catch(() => ({ detail: res.statusText }));
     throw new ApiError(res.status, body.detail || res.statusText);
   }
@@ -90,6 +99,18 @@ async function request<T>(
 }
 
 export const api = {
+  authStatus: () =>
+    request<{ auth_required: boolean; authenticated: boolean }>("/api/auth/status"),
+
+  login: (token: string) =>
+    request<{ ok: boolean }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+
+  logout: () =>
+    request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
+
   listProfiles: () => request<Profile[]>("/api/profiles"),
 
   getProfile: (id: string) => request<Profile>(`/api/profiles/${id}`),

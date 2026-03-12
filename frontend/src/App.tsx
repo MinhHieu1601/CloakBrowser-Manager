@@ -1,16 +1,67 @@
-import { useState, useCallback } from "react";
-import { PanelLeftClose, PanelLeft } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { Lock, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useProfiles } from "./hooks/useProfiles";
-import type { ProfileCreateData } from "./lib/api";
+import { api, setOnUnauthorized, type ProfileCreateData } from "./lib/api";
 import { ProfileList } from "./components/ProfileList";
 import { ProfileForm } from "./components/ProfileForm";
 import { ProfileViewer } from "./components/ProfileViewer";
 import { LaunchButton } from "./components/LaunchButton";
 import { StatusIndicator } from "./components/StatusIndicator";
+import { LoginPage } from "./components/LoginPage";
 
+type AuthState = "checking" | "required" | "ok";
 type View = "empty" | "create" | "edit" | "view";
 
 export default function App() {
+  const [authState, setAuthState] = useState<AuthState>("checking");
+  const [authRequired, setAuthRequired] = useState(false);
+
+  useEffect(() => {
+    setOnUnauthorized(() => setAuthState("required"));
+
+    api.authStatus()
+      .then(({ auth_required, authenticated }) => {
+        setAuthRequired(auth_required);
+        if (!auth_required || authenticated) {
+          setAuthState("ok");
+        } else {
+          setAuthState("required");
+        }
+      })
+      .catch(() => setAuthState("ok"));
+
+    return () => setOnUnauthorized(null);
+  }, []);
+
+  if (authState === "checking") {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-gray-500 text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (authState === "required") {
+    return <LoginPage onSuccess={() => setAuthState("ok")} />;
+  }
+
+  return (
+    <AppContent
+      authRequired={authRequired}
+      onLogout={async () => {
+        await api.logout();
+        setAuthState("required");
+      }}
+    />
+  );
+}
+
+interface AppContentProps {
+  authRequired: boolean;
+  onLogout: () => void;
+}
+
+function AppContent({ authRequired, onLogout }: AppContentProps) {
   const { profiles, loading, error, create, update, remove, launch, stop } = useProfiles();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
@@ -107,13 +158,24 @@ export default function App() {
               </div>
             )}
           </div>
-          {selected && (
-            <LaunchButton
-              status={selected.status}
-              onLaunch={handleLaunch}
-              onStop={handleStop}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {selected && (
+              <LaunchButton
+                status={selected.status}
+                onLaunch={handleLaunch}
+                onStop={handleStop}
+              />
+            )}
+            {authRequired && (
+              <button
+                onClick={onLogout}
+                className="text-gray-500 hover:text-gray-300 p-1"
+                title="Log out"
+              >
+                <Lock className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Error banner */}

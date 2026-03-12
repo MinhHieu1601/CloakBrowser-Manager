@@ -61,6 +61,7 @@ Each CloakBrowser profile generates a completely different device identity. To t
 - **One-click launch/stop** — each profile runs as an isolated CloakBrowser instance
 - **Session persistence** — cookies, localStorage, and cache survive browser restarts
 - **In-browser viewing** — interact with launched browsers via noVNC, directly in the web GUI
+- **Optional authentication** — protect the web UI and API with a single token, or run wide open locally
 - **Powered by CloakBrowser** — 32 source-level C++ patches, passes Cloudflare Turnstile, 0.9 reCAPTCHA v3 score
 
 ## Stack
@@ -123,6 +124,30 @@ ssh -L 8080:localhost:8080 your-server
 ```
 
 Then open `http://localhost:8080`.
+
+## Authentication
+
+By default, there is no authentication (ideal for local use). To protect the web UI and API when hosting on a network, set the `AUTH_TOKEN` environment variable:
+
+```bash
+docker run -p 8080:8080 -v cloakprofiles:/data -e AUTH_TOKEN=your-secret-token cloakhq/cloakbrowser-manager
+```
+
+Or in `docker-compose.yml`:
+
+```yaml
+environment:
+  - AUTH_TOKEN=your-secret-token
+```
+
+When `AUTH_TOKEN` is set:
+
+- The web UI shows a login page. Enter the token to unlock.
+- API consumers pass the token via `Authorization: Bearer <token>` header.
+- VNC WebSocket connections are authenticated via the login cookie.
+- The `/api/status` endpoint remains unauthenticated (for Docker healthcheck).
+
+> **Note**: The auth token is transmitted in cleartext over HTTP. If you expose the Manager to the internet, put it behind a reverse proxy with HTTPS (Caddy, nginx, Traefik).
 
 ## License
 
