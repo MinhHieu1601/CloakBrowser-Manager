@@ -1,22 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { ClipboardCopy, Maximize2, Minimize2 } from "lucide-react";
+import { ClipboardCopy, Code2, Maximize2, Minimize2 } from "lucide-react";
 import { api } from "../lib/api";
 
 interface ProfileViewerProps {
   profileId: string;
+  cdpUrl: string | null;
   onDisconnect: () => void;
 }
 
 // X11 keysym for V key (Ctrl is already held in VNC by the time we intercept)
 const XK_v = 0x0076;
 
-export function ProfileViewer({ profileId, onDisconnect }: ProfileViewerProps) {
+export function ProfileViewer({ profileId, cdpUrl, onDisconnect }: ProfileViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rfbRef = useRef<any>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [clipboardSync, setClipboardSync] = useState(false);
+  const [cdpCopied, setCdpCopied] = useState(false);
 
   useEffect(() => {
     let rfb: any = null;
@@ -233,6 +235,21 @@ export function ProfileViewer({ profileId, onDisconnect }: ProfileViewerProps) {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {cdpUrl && (
+            <button
+              onClick={() => {
+                const base = `${window.location.protocol}//${window.location.host}${cdpUrl}`;
+                navigator.clipboard.writeText(base).then(() => {
+                  setCdpCopied(true);
+                  setTimeout(() => setCdpCopied(false), 2000);
+                });
+              }}
+              className={`p-1 ${cdpCopied ? "text-emerald-400" : "text-gray-500 hover:text-gray-300"}`}
+              title={cdpCopied ? "Copied!" : "Copy CDP endpoint URL"}
+            >
+              <Code2 className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             onClick={() => { console.log("[clipboard] toggle:", !clipboardSync); setClipboardSync(!clipboardSync); }}
             className={`p-1 ${clipboardSync ? "text-accent" : "text-gray-500 hover:text-gray-300"}`}

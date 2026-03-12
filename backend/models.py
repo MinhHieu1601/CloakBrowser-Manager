@@ -87,6 +87,7 @@ class ProfileResponse(BaseModel):
     tags: list[TagResponse] = []
     status: str = "stopped"  # "running" | "stopped"
     vnc_ws_port: int | None = None
+    cdp_url: str | None = None
 
 
 class LaunchResponse(BaseModel):
@@ -94,6 +95,7 @@ class LaunchResponse(BaseModel):
     status: str = "running"
     vnc_ws_port: int
     display: str
+    cdp_url: str | None = None
 
 
 class StatusResponse(BaseModel):
@@ -106,6 +108,7 @@ class ProfileStatusResponse(BaseModel):
     status: str  # "running" | "stopped"
     vnc_ws_port: int | None = None
     display: str | None = None
+    cdp_url: str | None = None
 
 
 class ClipboardRequest(BaseModel):

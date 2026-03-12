@@ -23,3 +23,4 @@ deploy.sh
 CLAUDE.md
 publish-docker.sh
 .beads
+debug

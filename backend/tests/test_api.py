@@ -105,6 +105,7 @@ def test_delete_profile_stops_running(app_client: TestClient):
     mock_running = MagicMock(spec=RunningProfile)
     mock_running.display = 100
     mock_running.ws_port = 6100
+    mock_running.cdp_port = 5100
     main.browser_mgr.running[pid] = mock_running
     main.browser_mgr.stop = AsyncMock()
 
@@ -211,6 +212,7 @@ def test_set_clipboard_success(app_client: TestClient):
     # Inject mock running profile
     mock_running = MagicMock(spec=RunningProfile)
     mock_running.display = 100
+    mock_running.cdp_port = 5100
     main.browser_mgr.running[pid] = mock_running
 
     # Mock asyncio.create_subprocess_exec to avoid actual xclip
@@ -244,6 +246,7 @@ def test_get_clipboard_from_page(app_client: TestClient):
 
     mock_running = MagicMock(spec=RunningProfile)
     mock_running.display = 100
+    mock_running.cdp_port = 5100
     mock_running.context = mock_context
     main.browser_mgr.running[pid] = mock_running
 
@@ -264,3 +267,56 @@ def test_profile_response_has_status_field(app_client: TestClient):
     for profile in resp.json():
         assert "status" in profile
         assert profile["status"] in ("running", "stopped")
+
+
+def test_profile_response_has_cdp_url_field(app_client: TestClient):
+    """Stopped profiles should have cdp_url=null."""
+    app_client.post("/api/profiles", json={"name": "CdpShape"})
+    resp = app_client.get("/api/profiles")
+    for profile in resp.json():
+        assert "cdp_url" in profile
+        if profile["status"] == "stopped":
+            assert profile["cdp_url"] is None
+
+
+def test_status_stopped_has_cdp_url_null(app_client: TestClient):
+    create = app_client.post("/api/profiles", json={"name": "CdpStatus"})
+    pid = create.json()["id"]
+    resp = app_client.get(f"/api/profiles/{pid}/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cdp_url"] is None
+
+
+def test_running_profile_has_cdp_url(app_client: TestClient):
+    """Running profile should have a cdp_url in list/get responses."""
+    create = app_client.post("/api/profiles", json={"name": "CdpRunning"})
+    pid = create.json()["id"]
+
+    mock_running = MagicMock(spec=RunningProfile)
+    mock_running.display = 100
+    mock_running.ws_port = 6100
+    mock_running.cdp_port = 5100
+    mock_running.profile_id = pid
+    main.browser_mgr.running[pid] = mock_running
+
+    resp = app_client.get(f"/api/profiles/{pid}")
+    data = resp.json()
+    assert data["status"] == "running"
+    assert data["cdp_url"] == f"/api/profiles/{pid}/cdp"
+
+    # Cleanup
+    main.browser_mgr.running.pop(pid, None)
+
+
+# ── CDP Proxy ───────────────────────────────────────────────────────────────
+
+
+def test_cdp_json_version_not_running(app_client: TestClient):
+    resp = app_client.get("/api/profiles/nonexistent/cdp/json/version")
+    assert resp.status_code == 404
+
+
+def test_cdp_json_list_not_running(app_client: TestClient):
+    resp = app_client.get("/api/profiles/nonexistent/cdp/json/list")
+    assert resp.status_code == 404

@@ -218,6 +218,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
           {view === "view" && selected && selected.status === "running" && (
             <ProfileViewer
               profileId={selected.id}
+              cdpUrl={selected.cdp_url}
               onDisconnect={handleVncDisconnect}
             />
           )}

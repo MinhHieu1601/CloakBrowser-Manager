@@ -141,12 +141,16 @@ def _init_profile_defaults(user_data_dir: Path) -> None:
         logger.info("Set DuckDuckGo as default search for %s", user_data_dir.name)
 
 
+BASE_CDP_PORT = 5100  # CDP ports: 5100, 5101, ... (parallels VNC 6100+)
+
+
 @dataclass
 class RunningProfile:
     profile_id: str
     context: Any  # Playwright BrowserContext
     display: int
     ws_port: int
+    cdp_port: int
 
 
 class BrowserManager:
@@ -166,6 +170,7 @@ class BrowserManager:
             self._launching.add(profile_id)
 
         display, ws_port = await self.vnc.allocate()
+        cdp_port = BASE_CDP_PORT + (display - self.vnc.BASE_DISPLAY)
 
         # Clean stale Chromium lock files (left by previous container crashes)
         user_data_dir = Path(profile["user_data_dir"])
@@ -187,6 +192,7 @@ class BrowserManager:
 
             # Build fingerprint args from profile settings
             extra_args = self._build_fingerprint_args(profile)
+            extra_args.append(f"--remote-debugging-port={cdp_port}")
 
             # Normalize proxy format (host:port:user:pass → http://user:pass@host:port)
             raw_proxy = profile.get("proxy") or None
@@ -243,6 +249,7 @@ class BrowserManager:
                 context=context,
                 display=display,
                 ws_port=ws_port,
+                cdp_port=cdp_port,
             )
 
             # Auto-cleanup if browser crashes or user closes Chrome via VNC
@@ -255,8 +262,8 @@ class BrowserManager:
                 self._launching.discard(profile_id)
 
             logger.info(
-                "Launched profile %s on display :%d (ws_port=%d)",
-                profile_id, display, ws_port,
+                "Launched profile %s on display :%d (ws_port=%d, cdp_port=%d)",
+                profile_id, display, ws_port, cdp_port,
             )
 
             return running
@@ -303,8 +310,9 @@ class BrowserManager:
                 "status": "running",
                 "vnc_ws_port": running.ws_port,
                 "display": f":{running.display}",
+                "cdp_url": f"/api/profiles/{profile_id}/cdp",
             }
-        return {"status": "stopped", "vnc_ws_port": None, "display": None}
+        return {"status": "stopped", "vnc_ws_port": None, "display": None, "cdp_url": None}
 
     async def cleanup_all(self):
         """Stop all running profiles. Called on shutdown."""

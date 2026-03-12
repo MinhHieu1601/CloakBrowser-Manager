@@ -61,6 +61,7 @@ Each CloakBrowser profile generates a completely different device identity. To t
 - **One-click launch/stop** — each profile runs as an isolated CloakBrowser instance
 - **Session persistence** — cookies, localStorage, and cache survive browser restarts
 - **In-browser viewing** — interact with launched browsers via noVNC, directly in the web GUI
+- **Playwright/Puppeteer API** — connect to any running profile programmatically via CDP, while still watching it live in the browser
 - **Optional authentication** — protect the web UI and API with a single token, or run wide open locally
 - **Powered by CloakBrowser** — 32 source-level C++ patches, passes Cloudflare Turnstile, 0.9 reCAPTCHA v3 score
 
@@ -114,6 +115,33 @@ docker run -p 8080:8080 -v cloakprofiles:/data cloakhq/cloakbrowser-manager
 ```
 
 Your profiles and session data are stored in the `cloakprofiles` volume and persist across updates.
+
+## Automation API
+
+Every running profile exposes a CDP (Chrome DevTools Protocol) endpoint. Connect Playwright or Puppeteer to automate a profile while watching it live in the browser.
+
+```python
+from playwright.async_api import async_playwright
+
+async with async_playwright() as pw:
+    browser = await pw.chromium.connect_over_cdp(
+        "http://localhost:8080/api/profiles/<profile-id>/cdp"
+    )
+    page = browser.contexts[0].pages[0]
+    await page.goto("https://example.com")
+```
+
+```javascript
+const { chromium } = require("playwright");
+
+const browser = await chromium.connectOverCDP(
+  "http://localhost:8080/api/profiles/<profile-id>/cdp"
+);
+const page = browser.contexts()[0].pages()[0];
+await page.goto("https://example.com");
+```
+
+The CDP URL is available in the toolbar (code icon) when a profile is running. The same browser session is accessible both visually through VNC and programmatically through the API.
 
 ## Remote Access
 
