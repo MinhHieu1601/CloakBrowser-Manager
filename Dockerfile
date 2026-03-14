@@ -32,10 +32,11 @@ RUN echo "deb http://deb.debian.org/debian trixie contrib" >> /etc/apt/sources.l
     && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
-# Install KasmVNC
-RUN wget -q https://github.com/kasmtech/KasmVNC/releases/download/v1.3.3/kasmvncserver_bookworm_1.3.3_amd64.deb \
-    && apt-get update && apt-get install -y -f ./kasmvncserver_bookworm_1.3.3_amd64.deb \
-    && rm kasmvncserver_bookworm_1.3.3_amd64.deb \
+# Install KasmVNC (auto-selects amd64 or arm64 based on build platform)
+ARG TARGETARCH
+RUN wget -q https://github.com/kasmtech/KasmVNC/releases/download/v1.3.3/kasmvncserver_bookworm_1.3.3_${TARGETARCH}.deb \
+    && apt-get update && apt-get install -y -f ./kasmvncserver_bookworm_1.3.3_${TARGETARCH}.deb \
+    && rm kasmvncserver_bookworm_1.3.3_${TARGETARCH}.deb \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
