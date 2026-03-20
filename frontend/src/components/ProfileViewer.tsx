@@ -5,19 +5,20 @@ import { api } from "../lib/api";
 interface ProfileViewerProps {
   profileId: string;
   cdpUrl: string | null;
+  clipboardSync: boolean;
   onDisconnect: () => void;
 }
 
 // X11 keysym for V key (Ctrl is already held in VNC by the time we intercept)
 const XK_v = 0x0076;
 
-export function ProfileViewer({ profileId, cdpUrl, onDisconnect }: ProfileViewerProps) {
+export function ProfileViewer({ profileId, cdpUrl, clipboardSync: initialClipboardSync, onDisconnect }: ProfileViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rfbRef = useRef<any>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
-  const [clipboardSync, setClipboardSync] = useState(false);
+  const [clipboardSync, setClipboardSync] = useState(initialClipboardSync);
   const [cdpCopied, setCdpCopied] = useState(false);
 
   useEffect(() => {

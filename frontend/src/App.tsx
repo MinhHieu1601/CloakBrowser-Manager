@@ -244,8 +244,10 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
 
           {view === "view" && selected && selected.status === "running" && (
             <ProfileViewer
+              key={selected.id}
               profileId={selected.id}
               cdpUrl={selected.cdp_url}
+              clipboardSync={selected.clipboard_sync}
               onDisconnect={handleVncDisconnect}
             />
           )}

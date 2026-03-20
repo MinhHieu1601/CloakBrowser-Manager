@@ -48,6 +48,7 @@ def init_db():
                 human_preset TEXT DEFAULT 'default',
                 headless BOOLEAN DEFAULT 0,
                 geoip BOOLEAN DEFAULT 0,
+                clipboard_sync BOOLEAN DEFAULT 1,
                 color_scheme TEXT,
                 notes TEXT,
                 user_data_dir TEXT NOT NULL,
@@ -63,6 +64,12 @@ def init_db():
             );
         """)
         conn.commit()
+
+        # Migrations for existing databases
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(profiles)").fetchall()}
+        if "clipboard_sync" not in cols:
+            conn.execute("ALTER TABLE profiles ADD COLUMN clipboard_sync BOOLEAN DEFAULT 1")
+            conn.commit()
 
 
 def _now() -> str:
@@ -86,8 +93,8 @@ def create_profile(
                 id, name, fingerprint_seed, proxy, timezone, locale, platform,
                 user_agent, screen_width, screen_height, gpu_vendor, gpu_renderer,
                 hardware_concurrency, humanize, human_preset, headless, geoip,
-                color_scheme, notes, user_data_dir, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                clipboard_sync, color_scheme, notes, user_data_dir, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 profile_id, name, seed,
                 fields.get("proxy"),
@@ -104,6 +111,7 @@ def create_profile(
                 fields.get("human_preset", "default"),
                 fields.get("headless", False),
                 fields.get("geoip", False),
+                fields.get("clipboard_sync", True),
                 fields.get("color_scheme"),
                 fields.get("notes"),
                 user_data_dir, now, now,
@@ -162,7 +170,7 @@ def update_profile(profile_id: str, **fields: Any) -> dict[str, Any] | None:
         "name", "fingerprint_seed", "proxy", "timezone", "locale", "platform",
         "user_agent", "screen_width", "screen_height", "gpu_vendor", "gpu_renderer",
         "hardware_concurrency", "humanize", "human_preset", "headless", "geoip",
-        "color_scheme", "notes",
+        "clipboard_sync", "color_scheme", "notes",
     ):
         if col in fields:
             update_cols.append(f"{col} = ?")

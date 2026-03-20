@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProfileCreate(BaseModel):
@@ -24,6 +24,7 @@ class ProfileCreate(BaseModel):
     human_preset: Literal["default", "careful"] = "default"
     headless: bool = False
     geoip: bool = False
+    clipboard_sync: bool = True
     color_scheme: Literal["light", "dark", "no-preference"] | None = None
     notes: str | None = None
     tags: list[TagCreate] | None = None
@@ -46,6 +47,7 @@ class ProfileUpdate(BaseModel):
     human_preset: Literal["default", "careful"] | None = None
     headless: bool | None = None
     geoip: bool | None = None
+    clipboard_sync: bool | None = None
     color_scheme: Literal["light", "dark", "no-preference"] | None = Field(default=None)
     notes: str | None = Field(default=None)
     tags: list[TagCreate] | None = None
@@ -79,6 +81,13 @@ class ProfileResponse(BaseModel):
     human_preset: str = "default"
     headless: bool = False
     geoip: bool = False
+    clipboard_sync: bool = True
+
+    @field_validator("clipboard_sync", mode="before")
+    @classmethod
+    def coerce_clipboard_sync(cls, v: object) -> bool:
+        return v if v is not None else True
+
     color_scheme: str | None = None
     notes: str | None = None
     user_data_dir: str

@@ -20,6 +20,7 @@ export interface Profile {
   human_preset: string;
   headless: boolean;
   geoip: boolean;
+  clipboard_sync: boolean;
   color_scheme: string | null;
   notes: string | null;
   user_data_dir: string;
@@ -48,6 +49,7 @@ export interface ProfileCreateData {
   human_preset?: string;
   headless?: boolean;
   geoip?: boolean;
+  clipboard_sync?: boolean;
   color_scheme?: string | null;
   notes?: string | null;
   tags?: { tag: string; color: string | null }[];

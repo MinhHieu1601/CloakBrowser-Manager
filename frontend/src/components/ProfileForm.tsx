@@ -64,6 +64,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
     human_preset: "default",
     headless: false,
     geoip: false,
+    clipboard_sync: true,
     tags: [],
   });
 
@@ -91,6 +92,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
         human_preset: profile.human_preset,
         headless: profile.headless,
         geoip: profile.geoip,
+        clipboard_sync: profile.clipboard_sync,
         color_scheme: profile.color_scheme,
         notes: profile.notes,
         tags: profile.tags ?? [],
@@ -417,6 +419,15 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
                 </select>
               </div>
             )}
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.clipboard_sync ?? true}
+                onChange={(e) => set("clipboard_sync", e.target.checked)}
+                className="rounded border-border bg-surface-2"
+              />
+              Enable clipboard sync by default in VNC viewer
+            </label>
             <div>
               <label className="label">Color Scheme</label>
               <select
