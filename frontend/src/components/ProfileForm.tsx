@@ -98,7 +98,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
         tags: profile.tags ?? [],
       });
     }
-  }, [profile]);
+  }, [profile?.id]);
 
   const set = <K extends keyof ProfileCreateData>(key: K, value: ProfileCreateData[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
