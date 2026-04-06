@@ -9,9 +9,15 @@ import { ProfileViewer } from "./components/ProfileViewer";
 import { LaunchButton } from "./components/LaunchButton";
 import { StatusIndicator } from "./components/StatusIndicator";
 import { LoginPage } from "./components/LoginPage";
+import { AdminDashboard } from "./components/AdminDashboard";
 
 type AuthState = "checking" | "required" | "ok" | "error";
+type Page = "profiles" | "admin";
 type View = "empty" | "create" | "edit" | "view";
+
+function getInitialPage(): Page {
+  return window.location.pathname.startsWith("/admin") ? "admin" : "profiles";
+}
 
 export default function App() {
   const [authState, setAuthState] = useState<AuthState>("checking");
@@ -92,9 +98,21 @@ interface AppContentProps {
 function AppContent({ authRequired, onLogout }: AppContentProps) {
   const { profiles, loading, error, refresh: refreshProfiles, create, update, remove, launch, stop } = useProfiles();
   const { tags, refresh: refreshTags, updateTag, deleteTag } = useTags();
+  const [page, setPageState] = useState<Page>(getInitialPage);
+  const setPage = useCallback((p: Page) => {
+    setPageState(p);
+    window.history.pushState(null, "", p === "admin" ? "/admin" : "/");
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Sync page state with browser back/forward
+  useEffect(() => {
+    const onPopState = () => setPageState(getInitialPage());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const selected = profiles.find((p) => p.id === selectedId) ?? null;
 
@@ -153,6 +171,15 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
     );
   }
 
+  // Admin page — full-screen, no sidebar
+  if (page === "admin") {
+    return (
+      <div className="h-screen">
+        <AdminDashboard onBack={() => setPage("profiles")} />
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex">
       {/* Sidebar */}
@@ -169,6 +196,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
             onUpdateTag={updateTag}
             onDeleteTag={deleteTag}
             onRefreshTags={refreshTags}
+            onOpenAdmin={() => setPage("admin")}
           />
         </div>
       )}

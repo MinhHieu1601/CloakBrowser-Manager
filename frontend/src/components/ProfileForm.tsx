@@ -1,6 +1,7 @@
 import { Save, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Profile, ProfileCreateData } from "../lib/api";
+import { useProxies } from "../hooks/useProxies";
 
 interface ProfileFormProps {
   profile: Profile | null; // null = create mode
@@ -72,6 +73,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
   const [deleting, setDeleting] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [tagColor, setTagColor] = useState<string | null>("#6366f1");
+  const { proxies: proxyPool } = useProxies();
 
   useEffect(() => {
     if (profile) {
@@ -190,7 +192,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Basic</h3>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
-              <label className="label">Profile Name</label>
+              <label className="label">Profile Name <span className="text-red-500">*</span></label>
               <input
                 className="input"
                 value={form.name}
@@ -263,12 +265,32 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
           <div className="space-y-3">
             <div>
               <label className="label">Proxy</label>
-              <input
-                className="input"
-                value={form.proxy ?? ""}
-                onChange={(e) => set("proxy", e.target.value || null)}
-                placeholder="http://user:pass@host:port"
-              />
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1"
+                  value={form.proxy ?? ""}
+                  onChange={(e) => set("proxy", e.target.value || null)}
+                  placeholder="http://user:pass@host:port"
+                />
+                {proxyPool.length > 0 && (
+                  <select
+                    className="input w-auto"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) set("proxy", e.target.value);
+                    }}
+                  >
+                    <option value="">Pool...</option>
+                    {proxyPool
+                      .filter((p) => p.status === "active")
+                      .map((p) => (
+                        <option key={p.id} value={p.url}>
+                          {p.name}
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

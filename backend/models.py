@@ -137,3 +137,67 @@ class TagListResponse(BaseModel):
 
 class LoginRequest(BaseModel):
     token: str
+
+
+# ── Proxy Pool ────────────────────────────────────────────────────────────────
+
+
+class ProxyCreate(BaseModel):
+    name: str
+    url: str  # http://user:pass@host:port or socks5://...
+    type: Literal["http", "https", "socks5"] = "http"
+    status: Literal["active", "disabled"] = "active"
+    notes: str | None = None
+
+
+class ProxyUpdate(BaseModel):
+    name: str | None = None
+    url: str | None = Field(default=None)
+    type: Literal["http", "https", "socks5"] | None = None
+    status: Literal["active", "disabled"] | None = None
+    notes: str | None = Field(default=None)
+
+
+class ProxyResponse(BaseModel):
+    id: str
+    name: str
+    url: str
+    type: str
+    status: str
+    notes: str | None = None
+    profile_count: int = 0
+    created_at: str
+    updated_at: str
+
+
+class ProxyCheckResponse(BaseModel):
+    ok: bool
+    ip: str | None = None
+    country: str | None = None
+    latency_ms: int | None = None
+    error: str | None = None
+
+
+# ── Admin ─────────────────────────────────────────────────────────────────────
+
+
+class AdminStatsResponse(BaseModel):
+    running_count: int
+    profiles_total: int
+    proxies_total: int
+    tags_total: int
+    binary_version: str
+
+
+class AdminSettingsResponse(BaseModel):
+    auth_enabled: bool
+    data_dir: str
+    binary_version: str
+
+
+class DiskUsageResponse(BaseModel):
+    disk_usage_mb: float
+
+
+class CleanupResponse(BaseModel):
+    deleted_count: int

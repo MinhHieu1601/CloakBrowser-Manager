@@ -27,6 +27,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from . import database as db
 from .browser_manager import BrowserManager
 from .models import (
+    AdminSettingsResponse,
+    AdminStatsResponse,
+    CleanupResponse,
     ClipboardRequest,
     LaunchResponse,
     LoginRequest,
@@ -34,6 +37,10 @@ from .models import (
     ProfileResponse,
     ProfileStatusResponse,
     ProfileUpdate,
+    ProxyCheckResponse,
+    ProxyCreate,
+    ProxyResponse,
+    ProxyUpdate,
     StatusResponse,
     TagListResponse,
     TagResponse,
@@ -551,6 +558,160 @@ async def delete_tag(tag_name: str):
     return {"ok": True, "removed_from": count}
 
 
+# ── Proxy Pool ────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/proxies", response_model=list[ProxyResponse])
+async def list_proxies():
+    proxies = db.list_proxies()
+    return [ProxyResponse(**p) for p in proxies]
+
+
+@app.post("/api/proxies", response_model=ProxyResponse, status_code=201)
+async def create_proxy(req: ProxyCreate):
+    data = req.model_dump()
+    name = data.pop("name")
+    url = data.pop("url")
+    proxy = db.create_proxy(name=name, url=url, **data)
+    return ProxyResponse(**proxy)
+
+
+@app.get("/api/proxies/{proxy_id}", response_model=ProxyResponse)
+async def get_proxy(proxy_id: str):
+    proxy = db.get_proxy(proxy_id)
+    if not proxy:
+        raise HTTPException(status_code=404, detail="Proxy not found")
+    return ProxyResponse(**proxy)
+
+
+@app.put("/api/proxies/{proxy_id}", response_model=ProxyResponse)
+async def update_proxy(proxy_id: str, req: ProxyUpdate):
+    data = req.model_dump(exclude_unset=True)
+    proxy = db.update_proxy(proxy_id, **data)
+    if not proxy:
+        raise HTTPException(status_code=404, detail="Proxy not found")
+    return ProxyResponse(**proxy)
+
+
+@app.delete("/api/proxies/{proxy_id}")
+async def delete_proxy(proxy_id: str):
+    if not db.delete_proxy(proxy_id):
+        raise HTTPException(status_code=404, detail="Proxy not found")
+    return {"ok": True}
+
+
+@app.get("/api/proxies/{proxy_id}/check", response_model=ProxyCheckResponse)
+async def check_proxy(proxy_id: str):
+    proxy = db.get_proxy(proxy_id)
+    if not proxy:
+        raise HTTPException(status_code=404, detail="Proxy not found")
+
+    import time as _time
+
+    start = _time.monotonic()
+    try:
+        async with httpx.AsyncClient(
+            proxy=proxy["url"], timeout=15, follow_redirects=True,
+        ) as client:
+            # Get IP and country in one call via ip-api.com
+            resp = await client.get("http://ip-api.com/json/?fields=query,country")
+            latency = int((_time.monotonic() - start) * 1000)
+            data = resp.json()
+            return ProxyCheckResponse(
+                ok=True,
+                ip=data.get("query"),
+                country=data.get("country"),
+                latency_ms=latency,
+            )
+    except Exception as exc:
+        latency = int((_time.monotonic() - start) * 1000)
+        return ProxyCheckResponse(
+            ok=False, error=str(exc), latency_ms=latency,
+        )
+
+
+# ── Admin ─────────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/admin/stats", response_model=AdminStatsResponse)
+async def admin_stats():
+    try:
+        from cloakbrowser.config import CHROMIUM_VERSION
+    except Exception:
+        CHROMIUM_VERSION = "unknown"
+
+    profiles = db.list_profiles()
+    return AdminStatsResponse(
+        running_count=len(browser_mgr.running),
+        profiles_total=len(profiles),
+        proxies_total=db.count_proxies(),
+        tags_total=db.count_tags(),
+        binary_version=CHROMIUM_VERSION,
+    )
+
+
+@app.get("/api/admin/settings", response_model=AdminSettingsResponse)
+async def admin_settings():
+    try:
+        from cloakbrowser.config import CHROMIUM_VERSION
+    except Exception:
+        CHROMIUM_VERSION = "unknown"
+
+    return AdminSettingsResponse(
+        auth_enabled=AUTH_TOKEN is not None,
+        data_dir=str(db.DATA_DIR),
+        binary_version=CHROMIUM_VERSION,
+    )
+
+
+@app.get("/api/admin/disk-usage")
+async def admin_disk_usage():
+    """Get last saved disk usage (fast, from DB)."""
+    mb, updated_at = db.get_last_disk_usage()
+    return {"disk_usage_mb": mb, "updated_at": updated_at}
+
+
+@app.post("/api/admin/disk-usage")
+async def admin_refresh_disk_usage():
+    """Recalculate disk usage (slow) and save to DB."""
+    mb = db.calculate_disk_usage_mb()
+    _, updated_at = db.get_last_disk_usage()
+    return {"disk_usage_mb": mb, "updated_at": updated_at}
+
+
+@app.post("/api/admin/export")
+async def admin_export():
+    return db.export_all()
+
+
+@app.post("/api/admin/import")
+async def admin_import(request: Request):
+    body = await request.json()
+    imported_profiles = 0
+    imported_proxies = 0
+    if "profiles" in body:
+        imported_profiles = db.import_profiles(body["profiles"])
+    if "proxies" in body:
+        imported_proxies = db.import_proxies(body["proxies"])
+    return {
+        "ok": True,
+        "imported_profiles": imported_profiles,
+        "imported_proxies": imported_proxies,
+    }
+
+
+@app.post("/api/admin/cleanup", response_model=CleanupResponse)
+async def admin_cleanup():
+    running_ids = set(browser_mgr.running.keys())
+    count, dirs = db.cleanup_stopped_profiles(running_ids)
+    # Remove data directories
+    for d in dirs:
+        p = Path(d)
+        if p.exists():
+            shutil.rmtree(p, ignore_errors=True)
+    return CleanupResponse(deleted_count=count)
+
+
 # ── Launch / Stop ─────────────────────────────────────────────────────────────
 
 
@@ -601,7 +762,10 @@ async def get_profile_status(profile_id: str):
 
 @app.get("/api/status", response_model=StatusResponse)
 async def get_system_status():
-    from cloakbrowser.config import CHROMIUM_VERSION
+    try:
+        from cloakbrowser.config import CHROMIUM_VERSION
+    except Exception:
+        CHROMIUM_VERSION = "unknown"
 
     profiles = db.list_profiles()
     return StatusResponse(
@@ -1062,4 +1226,8 @@ if FRONTEND_DIR.exists():
         file_path = FRONTEND_DIR / full_path
         if full_path and file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(FRONTEND_DIR / "index.html")
+        # No-cache for index.html so browser always gets the latest JS bundle references
+        return FileResponse(
+            FRONTEND_DIR / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )

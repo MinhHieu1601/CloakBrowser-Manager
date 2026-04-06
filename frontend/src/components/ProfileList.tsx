@@ -1,6 +1,7 @@
-import { ChevronDown, ChevronRight, MoreHorizontal, Plus, Search, Monitor, Tag, X, Pencil, Trash2, Palette } from "lucide-react";
+import { ChevronDown, ChevronRight, MoreHorizontal, Plus, Search, Monitor, Tag, X, Pencil, Trash2, Palette, Sun, Moon, Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Profile, ProfileCreateData, TagInfo } from "../lib/api";
+import { useTheme } from "../hooks/useTheme";
 import { StatusIndicator } from "./StatusIndicator";
 
 interface ProfileListProps {
@@ -15,6 +16,7 @@ interface ProfileListProps {
   onUpdateTag: (tagName: string, data: { new_name?: string; color?: string | null }) => Promise<boolean>;
   onDeleteTag: (tagName: string) => Promise<boolean>;
   onRefreshTags: () => Promise<void>;
+  onOpenAdmin: () => void;
 }
 
 type ViewMode = "all" | "byTag";
@@ -35,7 +37,9 @@ export function ProfileList({
   onUpdateTag,
   onDeleteTag,
   onRefreshTags,
+  onOpenAdmin,
 }: ProfileListProps) {
+  const { theme, toggleTheme } = useTheme();
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [expandedTags, setExpandedTags] = useState<Set<string>>(new Set(["__untagged__"]));
@@ -352,7 +356,21 @@ export function ProfileList({
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2 mb-3">
           <Monitor className="h-4 w-4 text-accent" />
-          <h1 className="text-sm font-semibold tracking-tight">CloakBrowser Manager</h1>
+          <h1 className="text-sm font-semibold tracking-tight flex-1">CloakBrowser Manager</h1>
+          <button
+            onClick={onOpenAdmin}
+            className="p-1 rounded-md text-gray-400 hover:text-gray-200 hover:bg-surface-3 transition-colors"
+            title="Admin Dashboard"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={toggleTheme}
+            className="p-1 rounded-md text-gray-400 hover:text-gray-200 hover:bg-surface-3 transition-colors"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </button>
         </div>
         {runningCount > 0 && (
           <div className="text-xs text-gray-500 mb-3">
