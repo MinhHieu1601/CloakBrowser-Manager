@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Lock, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useProfiles } from "./hooks/useProfiles";
+import { useTags } from "./hooks/useTags";
 import { api, setOnUnauthorized, type ProfileCreateData } from "./lib/api";
 import { ProfileList } from "./components/ProfileList";
 import { ProfileForm } from "./components/ProfileForm";
@@ -89,7 +90,8 @@ interface AppContentProps {
 }
 
 function AppContent({ authRequired, onLogout }: AppContentProps) {
-  const { profiles, loading, error, create, update, remove, launch, stop } = useProfiles();
+  const { profiles, loading, error, refresh: refreshProfiles, create, update, remove, launch, stop } = useProfiles();
+  const { tags, refresh: refreshTags, updateTag, deleteTag } = useTags();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -161,6 +163,12 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
             selectedId={selectedId}
             onSelect={handleSelect}
             onNew={handleNew}
+            tags={tags}
+            onUpdateProfile={update}
+            onRefreshProfiles={refreshProfiles}
+            onUpdateTag={updateTag}
+            onDeleteTag={deleteTag}
+            onRefreshTags={refreshTags}
           />
         </div>
       )}

@@ -124,5 +124,16 @@ class ClipboardRequest(BaseModel):
     text: str = Field(max_length=1_048_576)  # 1MB max
 
 
+class TagUpdateRequest(BaseModel):
+    new_name: str | None = None
+    color: str | None = Field(default=None)
+
+
+class TagListResponse(BaseModel):
+    tag: str
+    color: str | None = None
+    profile_count: int
+
+
 class LoginRequest(BaseModel):
     token: str

@@ -35,7 +35,9 @@ from .models import (
     ProfileStatusResponse,
     ProfileUpdate,
     StatusResponse,
+    TagListResponse,
     TagResponse,
+    TagUpdateRequest,
 )
 
 logger = logging.getLogger("cloakbrowser.manager")
@@ -510,6 +512,43 @@ async def delete_profile(profile_id: str):
         shutil.rmtree(user_data_dir, ignore_errors=True)
 
     return {"ok": True}
+
+
+# ── Tag Management ────────────────────────────────────────────────────────────
+
+
+@app.get("/api/tags", response_model=list[TagListResponse])
+async def list_tags():
+    tags = db.list_all_tags()
+    return [TagListResponse(**t) for t in tags]
+
+
+@app.put("/api/tags/{tag_name}", response_model=list[TagListResponse])
+async def update_tag(tag_name: str, req: TagUpdateRequest):
+    # Check tag exists
+    all_tags = db.list_all_tags()
+    if not any(t["tag"] == tag_name for t in all_tags):
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    if req.new_name is not None and req.new_name != tag_name:
+        # Check for duplicate name
+        if any(t["tag"] == req.new_name for t in all_tags):
+            raise HTTPException(status_code=409, detail="Tag name already exists")
+        db.rename_tag(tag_name, req.new_name)
+        tag_name = req.new_name
+
+    if req.color is not None:
+        db.update_tag_color(tag_name, req.color)
+
+    return [TagListResponse(**t) for t in db.list_all_tags()]
+
+
+@app.delete("/api/tags/{tag_name}")
+async def delete_tag(tag_name: str):
+    count = db.delete_tag(tag_name)
+    if count == 0:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    return {"ok": True, "removed_from": count}
 
 
 # ── Launch / Stop ─────────────────────────────────────────────────────────────

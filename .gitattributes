@@ -1,3 +1,6 @@
 
 # Use bd merge for beads JSONL files
 .beads/issues.jsonl merge=beads
+
+# Force LF for shell scripts (Docker requires Unix line endings)
+*.sh text eol=lf

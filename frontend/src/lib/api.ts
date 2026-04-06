@@ -69,6 +69,12 @@ export interface SystemStatus {
   profiles_total: number;
 }
 
+export interface TagInfo {
+  tag: string;
+  color: string | null;
+  profile_count: number;
+}
+
 class ApiError extends Error {
   constructor(
     public status: number,
@@ -151,4 +157,19 @@ export const api = {
 
   getClipboard: (id: string) =>
     request<{ text: string }>(`/api/profiles/${id}/clipboard`),
+
+  // Tag management
+  listTags: () => request<TagInfo[]>("/api/tags"),
+
+  updateTag: (tagName: string, data: { new_name?: string; color?: string | null }) =>
+    request<TagInfo[]>(`/api/tags/${encodeURIComponent(tagName)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  deleteTag: (tagName: string) =>
+    request<{ ok: boolean; removed_from: number }>(
+      `/api/tags/${encodeURIComponent(tagName)}`,
+      { method: "DELETE" },
+    ),
 };

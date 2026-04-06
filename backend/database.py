@@ -205,3 +205,51 @@ def delete_profile(profile_id: str) -> bool:
         cursor = conn.execute("DELETE FROM profiles WHERE id = ?", (profile_id,))
         conn.commit()
         return cursor.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Tag management (independent of individual profiles)
+# ---------------------------------------------------------------------------
+
+
+def list_all_tags() -> list[dict[str, Any]]:
+    """Return all unique tags with their color and profile count."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT tag, color, COUNT(*) AS profile_count "
+            "FROM profile_tags GROUP BY tag ORDER BY tag",
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def rename_tag(old_name: str, new_name: str) -> int:
+    """Rename a tag across all profiles. Returns number of rows updated."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "UPDATE profile_tags SET tag = ? WHERE tag = ?",
+            (new_name, old_name),
+        )
+        conn.commit()
+        return cursor.rowcount
+
+
+def update_tag_color(tag_name: str, color: str | None) -> int:
+    """Update a tag's color across all profiles. Returns number of rows updated."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "UPDATE profile_tags SET color = ? WHERE tag = ?",
+            (color, tag_name),
+        )
+        conn.commit()
+        return cursor.rowcount
+
+
+def delete_tag(tag_name: str) -> int:
+    """Remove a tag from all profiles. Returns number of rows deleted."""
+    with get_db() as conn:
+        cursor = conn.execute(
+            "DELETE FROM profile_tags WHERE tag = ?",
+            (tag_name,),
+        )
+        conn.commit()
+        return cursor.rowcount
