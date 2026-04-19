@@ -62,6 +62,8 @@ class VNCManager:
             "-interface", "127.0.0.1",  # internal only, proxied by FastAPI
             "-AlwaysShared",
             "-httpd", httpd_dir,
+            "-publicIP", "127.0.0.1",  # skip STUN lookup (hangs 70s in Docker overlay)
+            "-disableBasicAuth",
         ]
 
         log_path = f"/tmp/xvnc-{display}.log"
@@ -75,8 +77,8 @@ class VNCManager:
         )
         log_file.close()  # Popen inherited the fd, parent doesn't need it
 
-        # Wait a moment for Xvnc to initialize
-        await asyncio.sleep(0.5)
+        # Wait for Xvnc to initialize (needs time to set up X display)
+        await asyncio.sleep(2)
 
         if proc.poll() is not None:
             try:
