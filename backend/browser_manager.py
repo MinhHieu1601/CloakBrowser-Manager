@@ -269,6 +269,18 @@ class BrowserManager:
                 except Exception as exc:
                     logger.debug("Clipboard init failed on existing page: %s", exc)
 
+            # Close extra about:blank tab if session restored other tabs
+            await asyncio.sleep(1)  # give Chrome time to restore session tabs
+            pages = context.pages
+            if len(pages) > 1:
+                for p in pages:
+                    try:
+                        if p.url in ("about:blank", "chrome://newtab/", "chrome://new-tab-page/"):
+                            await p.close()
+                            logger.info("Closed extra about:blank tab for %s", profile_id)
+                    except Exception:
+                        pass
+
             running = RunningProfile(
                 profile_id=profile_id,
                 context=context,
