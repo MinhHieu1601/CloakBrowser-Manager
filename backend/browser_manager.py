@@ -121,25 +121,39 @@ def _init_profile_defaults(user_data_dir: Path) -> None:
         bookmarks_path.write_text(json.dumps(bookmarks, indent=2))
         logger.info("Created default bookmarks for %s", user_data_dir.name)
 
-    # --- DuckDuckGo as default search engine ---
+    # --- Preferences: DuckDuckGo search + restore tabs on startup ---
     prefs_path = default_dir / "Preferences"
-    if not prefs_path.exists():
-        prefs = {
-            "default_search_provider_data": {
-                "template_url_data": {
-                    "keyword": "duckduckgo.com",
-                    "short_name": "DuckDuckGo",
-                    "url": "https://duckduckgo.com/?q={searchTerms}",
-                    "suggestions_url": "https://duckduckgo.com/ac/?q={searchTerms}&type=list",
-                    "favicon_url": "https://duckduckgo.com/favicon.ico",
-                }
-            },
-            "default_search_provider": {
-                "enabled": True,
-            },
+    prefs = {}
+    if prefs_path.exists():
+        try:
+            prefs = json.loads(prefs_path.read_text())
+        except Exception:
+            prefs = {}
+
+    changed = False
+
+    # DuckDuckGo as default search (first launch only)
+    if "default_search_provider_data" not in prefs:
+        prefs["default_search_provider_data"] = {
+            "template_url_data": {
+                "keyword": "duckduckgo.com",
+                "short_name": "DuckDuckGo",
+                "url": "https://duckduckgo.com/?q={searchTerms}",
+                "suggestions_url": "https://duckduckgo.com/ac/?q={searchTerms}&type=list",
+                "favicon_url": "https://duckduckgo.com/favicon.ico",
+            }
         }
+        prefs["default_search_provider"] = {"enabled": True}
+        changed = True
+
+    # Restore tabs on startup ("Continue where you left off")
+    if prefs.get("session", {}).get("restore_on_startup") != 1:
+        prefs.setdefault("session", {})["restore_on_startup"] = 1
+        changed = True
+
+    if changed:
         prefs_path.write_text(json.dumps(prefs, indent=2))
-        logger.info("Set DuckDuckGo as default search for %s", user_data_dir.name)
+        logger.info("Updated preferences for %s", user_data_dir.name)
 
 
 BASE_CDP_PORT = 5100  # CDP ports: 5100, 5101, ... (parallels VNC 6100+)
