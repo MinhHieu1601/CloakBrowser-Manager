@@ -13,6 +13,7 @@ interface ProfileListProps {
   tags: TagInfo[];
   onUpdateProfile: (id: string, data: Partial<ProfileCreateData>) => Promise<any>;
   onRefreshProfiles: () => Promise<void>;
+  onCreateTag: (tag: string, color: string | null) => Promise<boolean>;
   onUpdateTag: (tagName: string, data: { new_name?: string; color?: string | null }) => Promise<boolean>;
   onDeleteTag: (tagName: string) => Promise<boolean>;
   onRefreshTags: () => Promise<void>;
@@ -34,6 +35,7 @@ export function ProfileList({
   tags,
   onUpdateProfile,
   onRefreshProfiles,
+  onCreateTag,
   onUpdateTag,
   onDeleteTag,
   onRefreshTags,
@@ -47,6 +49,8 @@ export function ProfileList({
   const [profileMenuOpen, setProfileMenuOpen] = useState<string | null>(null);
   const [editingTag, setEditingTag] = useState<{ original: string; name: string; color: string | null } | null>(null);
   const [newTagInput, setNewTagInput] = useState<{ profileId: string; name: string; color: string } | null>(null);
+  const [creatingTag, setCreatingTag] = useState<{ name: string; color: string } | null>(null);
+  const [tagsPanelOpen, setTagsPanelOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -69,9 +73,17 @@ export function ProfileList({
     }
   }, [viewMode, tags]);
 
-  const filtered = profiles.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = profiles.filter((p) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      p.name.toLowerCase().includes(q) ||
+      p.platform.toLowerCase().includes(q) ||
+      (p.proxy ?? "").toLowerCase().includes(q) ||
+      (p.notes ?? "").toLowerCase().includes(q) ||
+      p.tags.some((t) => t.tag.toLowerCase().includes(q))
+    );
+  });
 
   const runningCount = profiles.filter((p) => p.status === "running").length;
 
@@ -412,6 +424,114 @@ export function ProfileList({
             className="input pl-8 py-1.5 text-xs"
           />
         </div>
+      </div>
+
+      {/* Tags panel */}
+      <div className="border-b border-border">
+        <button
+          onClick={() => setTagsPanelOpen(!tagsPanelOpen)}
+          className="w-full flex items-center justify-between px-4 py-2 text-xs text-gray-400 hover:text-gray-300 transition-colors"
+        >
+          <span className="flex items-center gap-1.5">
+            <Tag className="h-3 w-3" />
+            Tags ({tags.length})
+          </span>
+          {tagsPanelOpen
+            ? <ChevronDown className="h-3 w-3" />
+            : <ChevronRight className="h-3 w-3" />}
+        </button>
+        {tagsPanelOpen && (
+          <div className="px-3 pb-3 space-y-1">
+            {tags.length === 0 && !creatingTag && (
+              <div className="text-[10px] text-gray-600 py-1">No tags yet</div>
+            )}
+            {tags.map((t) => (
+              <div key={t.tag} className="flex items-center gap-2 group px-1 py-1 rounded hover:bg-surface-2">
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: t.color ?? "#6366f1" }}
+                />
+                <span className="text-xs text-gray-300 flex-1 truncate">{t.tag}</span>
+                <span className="text-[10px] text-gray-600">{t.profile_count}</span>
+                <button
+                  onClick={() => {
+                    setEditingTag({ original: t.tag, name: t.tag, color: t.color ?? null });
+                    setTagsPanelOpen(false);
+                  }}
+                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-4 text-gray-500 hover:text-gray-300 transition-opacity"
+                  title="Edit"
+                >
+                  <Pencil className="h-2.5 w-2.5" />
+                </button>
+                <button
+                  onClick={() => handleDeleteTag(t.tag)}
+                  className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-surface-4 text-red-500 hover:text-red-400 transition-opacity"
+                  title="Delete"
+                >
+                  <Trash2 className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            ))}
+            {/* Inline new tag */}
+            {creatingTag ? (
+              <div className="space-y-1.5 pt-1">
+                <input
+                  autoFocus
+                  className="w-full bg-surface-3 border border-border rounded px-2 py-1 text-xs text-gray-100 outline-none focus:border-accent"
+                  placeholder="Tag name"
+                  value={creatingTag.name}
+                  onChange={(e) => setCreatingTag({ ...creatingTag, name: e.target.value })}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && creatingTag.name.trim()) {
+                      await onCreateTag(creatingTag.name.trim(), creatingTag.color);
+                      await onRefreshTags();
+                      setCreatingTag(null);
+                    }
+                    if (e.key === "Escape") setCreatingTag(null);
+                  }}
+                />
+                <div className="flex gap-1 items-center">
+                  <Palette className="h-3 w-3 text-gray-500" />
+                  {TAG_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      className="w-3.5 h-3.5 rounded-full border-2 transition-transform"
+                      style={{
+                        backgroundColor: c,
+                        borderColor: creatingTag.color === c ? "#fff" : "transparent",
+                        transform: creatingTag.color === c ? "scale(1.15)" : undefined,
+                      }}
+                      onClick={() => setCreatingTag({ ...creatingTag, color: c })}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={async () => {
+                      if (!creatingTag.name.trim()) return;
+                      await onCreateTag(creatingTag.name.trim(), creatingTag.color);
+                      await onRefreshTags();
+                      setCreatingTag(null);
+                    }}
+                    className="btn-primary text-[10px] py-0.5 px-2 flex-1"
+                  >
+                    Create
+                  </button>
+                  <button onClick={() => setCreatingTag(null)} className="btn-secondary text-[10px] py-0.5 px-2">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setCreatingTag({ name: "", color: "#6366f1" })}
+                className="w-full text-left text-[10px] text-gray-500 hover:text-gray-300 py-1 px-1 flex items-center gap-1"
+              >
+                <Plus className="h-2.5 w-2.5" /> New tag
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Editing tag inline */}

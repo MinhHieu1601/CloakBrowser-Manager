@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, BarChart3, Globe, Settings } from "lucide-react";
+import { ArrowLeft, BarChart3, Globe, Settings, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { SystemOverview } from "./admin/SystemOverview";
 import { ProxyPool } from "./admin/ProxyPool";
 import { SettingsPanel } from "./admin/SettingsPanel";
+import { TrashBin } from "./admin/TrashBin";
 
-type AdminTab = "overview" | "proxies" | "settings";
+type AdminTab = "overview" | "proxies" | "trash" | "settings";
 
 interface AdminDashboardProps {
   onBack: () => void;
@@ -21,6 +22,7 @@ export interface DiskUsageState {
 const TABS: { id: AdminTab; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <BarChart3 className="h-3.5 w-3.5" /> },
   { id: "proxies", label: "Proxy Pool", icon: <Globe className="h-3.5 w-3.5" /> },
+  { id: "trash", label: "Trash", icon: <Trash2 className="h-3.5 w-3.5" /> },
   { id: "settings", label: "Settings", icon: <Settings className="h-3.5 w-3.5" /> },
 ];
 
@@ -91,6 +93,7 @@ export function AdminDashboard({ onBack }: AdminDashboardProps) {
       <div className="flex-1 overflow-y-auto p-6 bg-surface-0">
         {activeTab === "overview" && <SystemOverview disk={diskState} />}
         {activeTab === "proxies" && <ProxyPool />}
+        {activeTab === "trash" && <TrashBin />}
         {activeTab === "settings" && <SettingsPanel disk={diskState} />}
       </div>
     </div>

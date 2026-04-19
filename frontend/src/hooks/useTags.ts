@@ -46,5 +46,18 @@ export function useTags() {
     [],
   );
 
-  return { tags, loading, refresh, updateTag, deleteTag };
+  const createTag = useCallback(
+    async (tag: string, color: string | null) => {
+      try {
+        const updated = await api.createTag({ tag, color });
+        setTags(updated);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+
+  return { tags, loading, refresh, createTag, updateTag, deleteTag };
 }

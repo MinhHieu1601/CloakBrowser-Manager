@@ -42,6 +42,7 @@ from .models import (
     ProxyResponse,
     ProxyUpdate,
     StatusResponse,
+    TagCreate,
     TagListResponse,
     TagResponse,
     TagUpdateRequest,
@@ -61,6 +62,24 @@ AUTH_TOKEN: str | None = os.environ.get("AUTH_TOKEN") or None
 
 # Paths that bypass authentication even when AUTH_TOKEN is set
 _AUTH_EXEMPT = frozenset({"/api/auth/status", "/api/auth/login", "/api/status"})
+
+# Allowed WebSocket origins (comma-separated). When browser-manager is behind
+# a reverse proxy (e.g. saveorders.com proxying to internal service), the
+# browser's Origin header won't match the Host header. This whitelist allows it.
+_ALLOWED_ORIGINS: set[str] = set()
+_ao = os.environ.get("ALLOWED_ORIGINS", "")
+if _ao:
+    for o in _ao.split(","):
+        o = o.strip().rstrip("/")
+        if o:
+            parsed = urlparse(o)
+            host = parsed.hostname or ""
+            port = parsed.port
+            if port and port not in (80, 443):
+                _ALLOWED_ORIGINS.add(f"{host}:{port}")
+            else:
+                _ALLOWED_ORIGINS.add(host)
+    logger.info("Allowed WebSocket origins: %s", _ALLOWED_ORIGINS)
 
 
 def _check_auth(scope: Scope) -> bool:
@@ -140,6 +159,10 @@ async def _check_websocket_origin(websocket: WebSocket) -> bool:
     if origin_netloc == host_normalized:
         return True
 
+    # Check against allowed origins whitelist
+    if _ALLOWED_ORIGINS and origin_netloc in _ALLOWED_ORIGINS:
+        return True
+
     logger.warning("WebSocket origin mismatch: origin=%s host=%s", origin, host)
     await websocket.close(code=4403, reason="Origin not allowed")
     return False
@@ -158,6 +181,13 @@ class AuthMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         # Pass through if auth disabled, or non-HTTP/WS scope (e.g. lifespan)
         if not AUTH_TOKEN or scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+
+        # Skip auth for WebSocket connections — they are protected by
+        # _check_websocket_origin() + ALLOWED_ORIGINS instead of tokens.
+        # Browser WebSocket API cannot send custom auth headers.
+        if scope["type"] == "websocket":
             await self.app(scope, receive, send)
             return
 
@@ -501,33 +531,79 @@ async def update_profile(profile_id: str, req: ProfileUpdate):
 
 @app.delete("/api/profiles/{profile_id}")
 async def delete_profile(profile_id: str):
+    """Soft-delete: move profile to trash."""
     # Stop browser if running
     if profile_id in browser_mgr.running:
         await browser_mgr.stop(profile_id)
 
-    profile = db.get_profile(profile_id)
-    if not profile:
+    if not db.soft_delete_profile(profile_id):
         raise HTTPException(status_code=404, detail="Profile not found")
-
-    user_data_dir = Path(profile["user_data_dir"])
-
-    # DB first — if this fails, filesystem is untouched
-    db.delete_profile(profile_id)
-
-    # Then clean up disk
-    if user_data_dir.exists():
-        shutil.rmtree(user_data_dir, ignore_errors=True)
 
     return {"ok": True}
 
 
-# ── Tag Management ────────────────────────────────────────────────────────────
+# ── Trash ────────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/trash")
+async def list_trash():
+    profiles = db.list_trash()
+    result = []
+    for p in profiles:
+        p["tags"] = [TagResponse(**t) for t in p.get("tags", [])]
+        result.append(p)
+    return result
+
+
+@app.post("/api/trash/{profile_id}/restore")
+async def restore_profile(profile_id: str):
+    if not db.restore_profile(profile_id):
+        raise HTTPException(status_code=404, detail="Profile not found in trash")
+    return {"ok": True}
+
+
+@app.delete("/api/trash/{profile_id}")
+async def permanent_delete_profile(profile_id: str):
+    """Permanently delete a single trashed profile."""
+    profile = db.get_profile(profile_id)
+    if not profile or not profile.get("deleted_at"):
+        raise HTTPException(status_code=404, detail="Profile not found in trash")
+
+    user_data_dir = Path(profile["user_data_dir"])
+    db.delete_profile(profile_id)
+    if user_data_dir.exists():
+        shutil.rmtree(user_data_dir, ignore_errors=True)
+    return {"ok": True}
+
+
+@app.delete("/api/trash")
+async def empty_trash():
+    """Permanently delete all trashed profiles."""
+    count, dirs = db.empty_trash()
+    for d in dirs:
+        p = Path(d)
+        if p.exists():
+            shutil.rmtree(p, ignore_errors=True)
+    return {"ok": True, "deleted_count": count}
+
+
+# ── Tag Management
 
 
 @app.get("/api/tags", response_model=list[TagListResponse])
 async def list_tags():
     tags = db.list_all_tags()
     return [TagListResponse(**t) for t in tags]
+
+
+@app.post("/api/tags", response_model=list[TagListResponse], status_code=201)
+async def create_tag(req: TagCreate):
+    # Check if already exists
+    all_tags = db.list_all_tags()
+    if any(t["tag"] == req.tag for t in all_tags):
+        raise HTTPException(status_code=409, detail="Tag already exists")
+    db.create_standalone_tag(req.tag, req.color)
+    return [TagListResponse(**t) for t in db.list_all_tags()]
 
 
 @app.put("/api/tags/{tag_name}", response_model=list[TagListResponse])
@@ -552,9 +628,11 @@ async def update_tag(tag_name: str, req: TagUpdateRequest):
 
 @app.delete("/api/tags/{tag_name}")
 async def delete_tag(tag_name: str):
-    count = db.delete_tag(tag_name)
-    if count == 0:
+    # Check tag exists in either profile_tags or standalone_tags
+    all_tags = db.list_all_tags()
+    if not any(t["tag"] == tag_name for t in all_tags):
         raise HTTPException(status_code=404, detail="Tag not found")
+    count = db.delete_tag(tag_name)
     return {"ok": True, "removed_from": count}
 
 
@@ -1214,8 +1292,21 @@ async def cdp_page_proxy(websocket: WebSocket, profile_id: str, path: str):
 
 # ── Static Frontend ───────────────────────────────────────────────────────────
 
-# Serve React build. Must be AFTER API routes so /api/* isn't caught by the SPA.
-if FRONTEND_DIR.exists():
+# When DISABLE_FRONTEND is set, block direct browser access to the SPA.
+# Only API endpoints and WebSocket connections are allowed.
+# This prevents anyone from using the standalone UI on the public domain.
+_DISABLE_FRONTEND = os.environ.get("DISABLE_FRONTEND", "").lower() in ("true", "1", "yes")
+
+if _DISABLE_FRONTEND:
+    @app.get("/{full_path:path}")
+    async def block_frontend(full_path: str):
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        return JSONResponse(
+            {"detail": "Direct access disabled. Use the integrated UI."},
+            status_code=403,
+        )
+elif FRONTEND_DIR.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
     @app.get("/{full_path:path}")
@@ -1226,7 +1317,6 @@ if FRONTEND_DIR.exists():
         file_path = FRONTEND_DIR / full_path
         if full_path and file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        # No-cache for index.html so browser always gets the latest JS bundle references
         return FileResponse(
             FRONTEND_DIR / "index.html",
             headers={"Cache-Control": "no-cache, no-store, must-revalidate"},

@@ -2,6 +2,7 @@ import { Save, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Profile, ProfileCreateData } from "../lib/api";
 import { useProxies } from "../hooks/useProxies";
+import { useTags } from "../hooks/useTags";
 
 interface ProfileFormProps {
   profile: Profile | null; // null = create mode
@@ -74,6 +75,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
   const [tagInput, setTagInput] = useState("");
   const [tagColor, setTagColor] = useState<string | null>("#6366f1");
   const { proxies: proxyPool } = useProxies();
+  const { tags: allTags } = useTags();
 
   useEffect(() => {
     if (profile) {
@@ -498,6 +500,26 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
               ))}
             </div>
           )}
+          {/* Existing tags quick-add */}
+          {(() => {
+            const available = allTags.filter((t) => !(form.tags ?? []).some((ft) => ft.tag === t.tag));
+            return available.length > 0 ? (
+              <div className="flex flex-wrap gap-1 mb-3">
+                {available.map((t) => (
+                  <button
+                    key={t.tag}
+                    type="button"
+                    onClick={() => set("tags", [...(form.tags ?? []), { tag: t.tag, color: t.color }])}
+                    className="text-[11px] px-2 py-0.5 rounded-full border border-border text-gray-500 hover:text-gray-300 hover:border-border-hover transition-colors flex items-center gap-1"
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color ?? "#6366f1" }} />
+                    {t.tag}
+                  </button>
+                ))}
+              </div>
+            ) : null;
+          })()}
+          {/* Manual tag input */}
           <div className="flex gap-2 items-center">
             <div className="flex gap-1">
               {TAG_COLORS.map((c) => (
@@ -519,7 +541,7 @@ export function ProfileForm({ profile, onSave, onDelete, onCancel }: ProfileForm
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
-              placeholder="Add tag..."
+              placeholder="Add new tag..."
             />
             <button type="button" onClick={addTag} className="btn-secondary text-xs">
               Add

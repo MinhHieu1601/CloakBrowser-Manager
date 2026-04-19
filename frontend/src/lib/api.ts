@@ -103,6 +103,17 @@ export interface ProxyCheckResult {
   error: string | null;
 }
 
+export interface TrashProfile {
+  id: string;
+  name: string;
+  platform: string;
+  proxy: string | null;
+  tags: { tag: string; color: string | null }[];
+  user_data_dir: string;
+  created_at: string;
+  deleted_at: string;
+}
+
 export interface AdminStats {
   running_count: number;
   profiles_total: number;
@@ -206,6 +217,12 @@ export const api = {
   // Tag management
   listTags: () => request<TagInfo[]>("/api/tags"),
 
+  createTag: (data: { tag: string; color: string | null }) =>
+    request<TagInfo[]>("/api/tags", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   updateTag: (tagName: string, data: { new_name?: string; color?: string | null }) =>
     request<TagInfo[]>(`/api/tags/${encodeURIComponent(tagName)}`, {
       method: "PUT",
@@ -267,4 +284,16 @@ export const api = {
 
   cleanupStopped: () =>
     request<{ deleted_count: number }>("/api/admin/cleanup", { method: "POST" }),
+
+  // Trash
+  listTrash: () => request<TrashProfile[]>("/api/trash"),
+
+  restoreProfile: (id: string) =>
+    request<{ ok: boolean }>(`/api/trash/${id}/restore`, { method: "POST" }),
+
+  permanentDeleteProfile: (id: string) =>
+    request<{ ok: boolean }>(`/api/trash/${id}`, { method: "DELETE" }),
+
+  emptyTrash: () =>
+    request<{ ok: boolean; deleted_count: number }>("/api/trash", { method: "DELETE" }),
 };

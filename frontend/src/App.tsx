@@ -97,7 +97,7 @@ interface AppContentProps {
 
 function AppContent({ authRequired, onLogout }: AppContentProps) {
   const { profiles, loading, error, refresh: refreshProfiles, create, update, remove, launch, stop } = useProfiles();
-  const { tags, refresh: refreshTags, updateTag, deleteTag } = useTags();
+  const { tags, refresh: refreshTags, createTag, updateTag, deleteTag } = useTags();
   const [page, setPageState] = useState<Page>(getInitialPage);
   const setPage = useCallback((p: Page) => {
     setPageState(p);
@@ -132,13 +132,15 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
     if (profile) {
       setSelectedId(profile.id);
       setView("edit");
+      await refreshTags();
     }
-  }, [create]);
+  }, [create, refreshTags]);
 
   const handleUpdate = useCallback(async (data: ProfileCreateData) => {
     if (!selectedId) return;
     await update(selectedId, data);
-  }, [selectedId, update]);
+    await refreshTags();
+  }, [selectedId, update, refreshTags]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedId) return;
@@ -193,6 +195,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
             tags={tags}
             onUpdateProfile={update}
             onRefreshProfiles={refreshProfiles}
+            onCreateTag={createTag}
             onUpdateTag={updateTag}
             onDeleteTag={deleteTag}
             onRefreshTags={refreshTags}
