@@ -226,7 +226,8 @@ class BrowserManager:
                 _validate_proxy(proxy)
 
             # Launch CloakBrowser on that display
-            # DISPLAY is passed via env kwarg to avoid process-wide os.environ mutation
+            # Set DISPLAY in os.environ directly — env kwarg doesn't propagate to Chrome
+            os.environ["DISPLAY"] = f":{display}"
             context = await launch_persistent_context_async(
                 user_data_dir=profile["user_data_dir"],
                 headless=bool(profile.get("headless", False)),
@@ -243,7 +244,6 @@ class BrowserManager:
                     "width": profile.get("screen_width", 1920),
                     "height": profile.get("screen_height", 1080) - 133,
                 },
-                env={**os.environ, "DISPLAY": f":{display}"},
             )
 
             # Inject clipboard listener: captures copied text on every page
